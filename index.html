@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WhatsApp Scheduler</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f0f2f5;
+      padding: 20px;
+    }
+    
+    .container {
+      background-color: white;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      padding: 20px;
+      max-width: 700px;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #128C7E;
+    }
+    
+    .qr-container {
+      text-align: center;
+      margin: 20px 0;
+    }
+    
+    #qrcode {
+      max-width: 250px;
+      margin: 0 auto;
+    }
+    
+    .status-container {
+      margin: 15px 0;
+      text-align: center;
+    }
+    
+    .form-group {
+      margin-bottom: 15px;
+    }
+    
+    .scheduled-messages {
+      margin-top: 30px;
+    }
+    
+    .message-item {
+      background-color: #f8f9fa;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    
+    .btn-primary {
+      background-color: #128C7E;
+      border-color: #128C7E;
+    }
+    
+    .btn-primary:hover {
+      background-color: #0C6B58;
+      border-color: #0C6B58;
+    }
+    
+    .btn-danger {
+      background-color: #DC3545;
+      border-color: #DC3545;
+    }
+    
+    .cancel-btn {
+      margin-left: 10px;
+    }
+    
+    .connection-status {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 5px;
+    }
+    
+    .connected {
+      background-color: #28a745;
+    }
+    
+    .disconnected {
+      background-color: #dc3545;
+    }
+    
+    .connecting {
+      background-color: #ffc107;
+    }
+    
+    #phone-format-help {
+      font-size: 0.8em;
+      color: #6c757d;
+    }
+    
+    .hidden {
+      display: none;
+    }
+    
+    .tab-buttons {
+      display: flex;
+      margin-bottom: 20px;
+    }
+    
+    .tab-button {
+      flex: 1;
+      text-align: center;
+      padding: 10px;
+      background-color: #e9ecef;
+      cursor: pointer;
+      border: none;
+    }
+    
+    .tab-button.active {
+      background-color: #128C7E;
+      color: white;
+    }
+    
+    .tab-button:first-child {
+      border-top-left-radius: 5px;
+      border-bottom-left-radius: 5px;
+    }
+    
+    .tab-button:last-child {
+      border-top-right-radius: 5px;
+      border-bottom-right-radius: 5px;
+    }
+    
+    .tab-content {
+      display: none;
+    }
+    
+    .tab-content.active {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>WhatsApp Scheduler</h1>
+      <div class="status-container">
+        <span class="connection-status disconnected" id="connection-status"></span>
+        <span id="status-text">Подключение...</span>
+      </div>
+    </div>
+    
+    <div class="tab-buttons">
+      <button class="tab-button active" data-tab="new-message">Новое сообщение</button>
+      <button class="tab-button" data-tab="scheduled-messages">Запланированные</button>
+    </div>
+    
+    <div class="tab-content active" id="new-message-tab">
+      <div class="qr-container" id="qr-container">
+        <p>Пожалуйста, отсканируйте QR-код в приложении WhatsApp на вашем телефоне</p>
+        <img id="qrcode" src="" alt="QR-код для авторизации WhatsApp">
+      </div>
+      
+      <div class="message-form" id="message-form">
+        <div class="form-group">
+          <label for="phone">Номер телефона получателя:</label>
+          <input type="text" id="phone" class="form-control" placeholder="+7 (999) 123-45-67">
+          <small id="phone-format-help">Формат: +7XXXXXXXXXX или XXXXXXXXXX</small>
+        </div>
+        
+        <div class="form-group">
+          <label for="message">Текст сообщения:</label>
+          <textarea id="message" class="form-control" rows="4" placeholder="Введите текст сообщения..."></textarea>
+        </div>
+        
+        <div class="form-group">
+          <label for="datetime">Дата и время отправки:</label>
+          <input type="datetime-local" id="datetime" class="form-control">
+        </div>
+        
+        <div class="form-group">
+          <label for="timezone">Часовой пояс:</label>
+          <select id="timezone" class="form-control"></select>
+        </div>
+        
+        <button id="schedule-btn" class="btn btn-primary w-100">Запланировать отправку</button>
+      </div>
+    </div>
+    
+    <div class="tab-content" id="scheduled-messages-tab">
+      <h3>Запланированные сообщения</h3>
+      <div id="scheduled-list" class="scheduled-messages">
+        <p id="no-messages" class="text-center">Нет запланированных сообщений</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Инициализация интерфейса после загрузки DOM
+    document.addEventListener('DOMContentLoaded', () => {
+      // Элементы интерфейса
+      const qrContainer = document.getElementById('qr-container');
+      const qrCodeImg = document.getElementById('qrcode');
+      const messageForm = document.getElementById('message-form');
+      const phoneInput = document.getElementById('phone');
+      const messageInput = document.getElementById('message');
+      const datetimeInput = document.getElementById('datetime');
+      const timezoneSelect = document.getElementById('timezone');
+      const scheduleBtn = document.getElementById('schedule-btn');
+      const connectionStatus = document.getElementById('connection-status');
+      const statusText = document.getElementById('status-text');
+      const scheduledList = document.getElementById('scheduled-list');
+      const noMessagesText = document.getElementById('no-messages');
+      const tabButtons = document.querySelectorAll('.tab-button');
+      const tabContents = document.querySelectorAll('.tab-content');
+      
+      // Состояние подключения
+      let isConnected = false;
+      
+      // Заполняем список часовых поясов
+      function populateTimezones() {
+        const timezones = window.whatsappAPI.getTimezones();
+        const currentTimezone = window.whatsappAPI.getCurrentTimezone();
+        
+        timezoneSelect.innerHTML = '';
+        
+        timezones.forEach(timezone => {
+          const option = document.createElement('option');
+          option.value = timezone;
+          option.textContent = timezone;
+          
+          if (timezone === currentTimezone) {
+            option.selected = true;
+          }
+          
+          timezoneSelect.appendChild(option);
+        });
+      }
+      
+      // Установка минимального времени для выбора даты
+      function setMinDatetime() {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        
+        datetimeInput.min = `${year}-${month}-${day}T${hours}:${minutes}`;
+        
+        // Устанавливаем значение по умолчанию (текущее время + 1 минута)
+        now.setMinutes(now.getMinutes() + 1);
+        const defaultHours = String(now.getHours()).padStart(2, '0');
+        const defaultMinutes = String(now.getMinutes()).padStart(2, '0');
+        
+        datetimeInput.value = `${year}-${month}-${day}T${defaultHours}:${defaultMinutes}`;
+      }
+      
+      // Обновление списка запланированных сообщений
+      async function updateScheduledMessages() {
+        try {
+          const messages = await window.whatsappAPI.getScheduledMessages();
+          scheduledList.innerHTML = '';
+          
+          if (messages.length === 0) {
+            noMessagesText.classList.remove('hidden');
+            return;
+          }
+          
+          noMessagesText.classList.add('hidden');
+          
+          messages.forEach(msg => {
+            const sendDate = new Date(msg.sendTime);
+            const timezone = msg.timezone || 'UTC';
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message-item';
+            messageDiv.innerHTML = `
+              <div><strong>Кому:</strong> ${msg.phone}</div>
+              <div><strong>Сообщение:</strong> ${msg.message}</div>
+              <div><strong>Дата отправки:</strong> ${sendDate.toLocaleString()}</div>
+              <div><strong>Часовой пояс:</strong> ${timezone}</div>
+              <button class="btn btn-danger btn-sm cancel-btn" data-id="${msg.id}">Отменить</button>
+            `;
+            
+            scheduledList.appendChild(messageDiv);
+          });
+          
+          // Добавляем обработчики для кнопок отмены
+          document.querySelectorAll('.cancel-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              const messageId = btn.getAttribute('data-id');
+              const result = await window.whatsappAPI.cancelMessage(messageId);
+              
+              if (result.success) {
+                updateScheduledMessages();
+              } else {
+                alert('Ошибка при отмене сообщения: ' + result.error);
+              }
+            });
+          });
+        } catch (error) {
+          console.error('Ошибка при получении запланированных сообщений:', error);
+        }
+      }
+      
+      // Обработчик для кнопки "Запланировать отправку"
+      scheduleBtn.addEventListener('click', async () => {
+        const phone = phoneInput.value.trim();
+        const message = messageInput.value.trim();
+        const datetime = datetimeInput.value;
+        const timezone = timezoneSelect.value;
+        
+        // Валидация
+        if (!phone) {
+          alert('Пожалуйста, введите номер телефона');
+          return;
+        }
+        
+        if (!message) {
+          alert('Пожалуйста, введите текст сообщения');
+          return;
+        }
+        
+        if (!datetime) {
+          alert('Пожалуйста, выберите дату и время отправки');
+          return;
+        }
+        
+        try {
+          // Проверяем, что выбранное время находится в будущем
+          const selectedTime = new Date(datetime);
+          const now = new Date();
+          
+          if (selectedTime <= now) {
+            alert('Пожалуйста, выберите время в будущем');
+            return;
+          }
+          
+          // Запланировать сообщение
+          const result = await window.whatsappAPI.scheduleMessage(phone, message, datetime, timezone);
+          
+          if (result.success) {
+            alert(`Сообщение успешно запланировано на ${new Date(result.scheduledTime).toLocaleString()}`);
+            
+            // Очищаем форму
+            phoneInput.value = '';
+            messageInput.value = '';
+            setMinDatetime();
+            
+            // Обновляем список запланированных сообщений
+            updateScheduledMessages();
+          } else {
+            alert('Ошибка при планировании сообщения: ' + result.error);
+          }
+        } catch (error) {
+          alert('Произошла ошибка: ' + error.message);
+        }
+      });
+      
+      // Обработчики для вкладок
+      tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+          // Убираем активный класс со всех кнопок и контентов
+          tabButtons.forEach(btn => btn.classList.remove('active'));
+          tabContents.forEach(content => content.classList.remove('active'));
+          
+          // Добавляем активный класс для выбранной вкладки
+          button.classList.add('active');
+          const tabId = button.getAttribute('data-tab');
+          document.getElementById(`${tabId}-tab`).classList.add('active');
+          
+          // Если переключились на вкладку запланированных сообщений, обновляем список
+          if (tabId === 'scheduled-messages') {
+            updateScheduledMessages();
+          }
+        });
+      });
+      
+      // Обработчики событий от WhatsApp
+      window.whatsappAPI.onQrCode((qrCodeUrl) => {
+        qrCodeImg.src = qrCodeUrl;
+        qrContainer.classList.remove('hidden');
+        messageForm.classList.add('hidden');
+        
+        // Обновляем статус
+        connectionStatus.className = 'connection-status connecting';
+        statusText.textContent = 'Ожидание сканирования QR-кода...';
+      });
+      
+      window.whatsappAPI.onWhatsAppReady(() => {
+        qrContainer.classList.add('hidden');
+        messageForm.classList.remove('hidden');
+        
+        // Обновляем статус
+        isConnected = true;
+        connectionStatus.className = 'connection-status connected';
+        statusText.textContent = 'Подключено к WhatsApp';
+        
+        // Обновляем список сообщений
+        updateScheduledMessages();
+      });
+      
+      window.whatsappAPI.onWhatsAppDisconnected((reason) => {
+        // Обновляем статус
+        isConnected = false;
+        connectionStatus.className = 'connection-status disconnected';
+        statusText.textContent = 'Отключено от WhatsApp';
+        
+        // Показываем информацию и кнопку для переподключения
+        alert('Соединение с WhatsApp потеряно. Пожалуйста, перезапустите приложение или переподключитесь.');
+      });
+      
+      window.whatsappAPI.onAuthFailure((message) => {
+        alert('Ошибка авторизации: ' + message);
+        
+        // Обновляем статус
+        connectionStatus.className = 'connection-status disconnected';
+        statusText.textContent = 'Ошибка авторизации';
+      });
+      
+      window.whatsappAPI.onMessageSent((messageId) => {
+        // Обновляем список запланированных сообщений
+        updateScheduledMessages();
+      });
+      
+      window.whatsappAPI.onSendError((error) => {
+        alert('Ошибка при отправке сообщения: ' + error);
+      });
+      
+      // Инициализация компонентов интерфейса
+      populateTimezones();
+      setMinDatetime();
+      
+      // Показываем форму или QR-код в зависимости от статуса подключения
+      if (isConnected) {
+        qrContainer.classList.add('hidden');
+        messageForm.classList.remove('hidden');
+      } else {
+        qrContainer.classList.remove('hidden');
+        messageForm.classList.add('hidden');
+      }
+    });
+  </script>
+</body>
+</html>
