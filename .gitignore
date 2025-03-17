@@ -1,0 +1,34 @@
+# Node.js зависимости
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# Файлы сборки Electron
+dist/
+out/
+
+# Директории с сессиями WhatsApp
+.wwebjs_auth/
+.wwebjs_cache/
+
+# Директория с настройками VS Code
+.vscode/
+
+# Файлы операционной системы
+.DS_Store
+Thumbs.db
+
+# Файлы ENV
+.env
+.env.local
+
+# Файлы логов
+*.log
+logs/
+
+# Директория с временными файлами
+tmp/
+temp/
