@@ -29,11 +29,18 @@
     .qr-container {
       text-align: center;
       margin: 20px 0;
+      border: 2px solid #128C7E;
+      padding: 20px;
+      border-radius: 10px;
+      background-color: white;
     }
     
     #qrcode {
-      max-width: 250px;
+      max-width: 300px;
+      width: 250px;
+      height: 250px;
       margin: 0 auto;
+      border: 1px solid #ddd;
     }
     
     .status-container {
@@ -102,7 +109,7 @@
     }
     
     .hidden {
-      display: none;
+      display: none !important;
     }
     
     .tab-buttons {
@@ -141,6 +148,19 @@
     .tab-content.active {
       display: block;
     }
+    
+    .debug-info {
+      margin-top: 20px;
+      padding: 10px;
+      background-color: #f8f9fa;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      font-size: 0.8em;
+    }
+    
+    .reload-btn {
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
@@ -161,10 +181,15 @@
     <div class="tab-content active" id="new-message-tab">
       <div class="qr-container" id="qr-container">
         <p>Пожалуйста, отсканируйте QR-код в приложении WhatsApp на вашем телефоне</p>
+        <p><small>Откройте WhatsApp на телефоне > Нажмите на три точки > Выберите "Связанные устройства" > Нажмите "Привязать устройство"</small></p>
         <img id="qrcode" src="" alt="QR-код для авторизации WhatsApp">
+        <div id="qr-debug-info" class="debug-info">
+          <p>Статус QR-кода: <span id="qr-status">Ожидание...</span></p>
+          <button id="reload-qr-btn" class="btn btn-sm btn-warning reload-btn">Перезагрузить QR-код</button>
+        </div>
       </div>
       
-      <div class="message-form" id="message-form">
+      <div class="message-form hidden" id="message-form">
         <div class="form-group">
           <label for="phone">Номер телефона получателя:</label>
           <input type="text" id="phone" class="form-control" placeholder="+7 (999) 123-45-67">
@@ -201,9 +226,13 @@
   <script>
     // Инициализация интерфейса после загрузки DOM
     document.addEventListener('DOMContentLoaded', () => {
+      console.log('DOM загружен, инициализация интерфейса...');
+      
       // Элементы интерфейса
       const qrContainer = document.getElementById('qr-container');
       const qrCodeImg = document.getElementById('qrcode');
+      const qrStatus = document.getElementById('qr-status');
+      const reloadQrBtn = document.getElementById('reload-qr-btn');
       const messageForm = document.getElementById('message-form');
       const phoneInput = document.getElementById('phone');
       const messageInput = document.getElementById('message');
@@ -219,9 +248,13 @@
       
       // Состояние подключения
       let isConnected = false;
+      let qrReceived = false;
+      
+      console.log('Элементы интерфейса определены');
       
       // Заполняем список часовых поясов
       function populateTimezones() {
+        console.log('Заполнение списка часовых поясов...');
         const timezones = window.whatsappAPI.getTimezones();
         const currentTimezone = window.whatsappAPI.getCurrentTimezone();
         
@@ -238,10 +271,12 @@
           
           timezoneSelect.appendChild(option);
         });
+        console.log('Список часовых поясов заполнен, выбран:', currentTimezone);
       }
       
       // Установка минимального времени для выбора даты
       function setMinDatetime() {
+        console.log('Установка минимального времени...');
         const now = new Date();
         const year = now.getFullYear();
         const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -257,13 +292,17 @@
         const defaultMinutes = String(now.getMinutes()).padStart(2, '0');
         
         datetimeInput.value = `${year}-${month}-${day}T${defaultHours}:${defaultMinutes}`;
+        console.log('Минимальное время установлено:', datetimeInput.min);
       }
       
       // Обновление списка запланированных сообщений
       async function updateScheduledMessages() {
+        console.log('Обновление списка запланированных сообщений...');
         try {
           const messages = await window.whatsappAPI.getScheduledMessages();
           scheduledList.innerHTML = '';
+          
+          console.log('Получено запланированных сообщений:', messages.length);
           
           if (messages.length === 0) {
             noMessagesText.classList.remove('hidden');
@@ -302,13 +341,32 @@
               }
             });
           });
+          console.log('Список запланированных сообщений обновлен');
         } catch (error) {
           console.error('Ошибка при получении запланированных сообщений:', error);
         }
       }
       
+      // Обработчик для кнопки перезагрузки QR-кода
+      reloadQrBtn.addEventListener('click', async () => {
+        console.log('Нажата кнопка перезагрузки QR-кода');
+        qrStatus.textContent = 'Перезагрузка QR-кода...';
+        try {
+          const result = await window.whatsappAPI.restartWhatsApp();
+          if (result.success) {
+            qrStatus.textContent = 'QR-код запрошен, ожидание...';
+          } else {
+            qrStatus.textContent = 'Ошибка перезагрузки: ' + result.error;
+          }
+        } catch (error) {
+          console.error('Ошибка при перезагрузке WhatsApp:', error);
+          qrStatus.textContent = 'Ошибка: ' + error.message;
+        }
+      });
+      
       // Обработчик для кнопки "Запланировать отправку"
       scheduleBtn.addEventListener('click', async () => {
+        console.log('Нажата кнопка запланировать отправку');
         const phone = phoneInput.value.trim();
         const message = messageInput.value.trim();
         const datetime = datetimeInput.value;
@@ -340,10 +398,13 @@
             return;
           }
           
+          console.log('Планирование сообщения:', { phone, datetime, timezone });
+          
           // Запланировать сообщение
           const result = await window.whatsappAPI.scheduleMessage(phone, message, datetime, timezone);
           
           if (result.success) {
+            console.log('Сообщение успешно запланировано на:', result.scheduledTime);
             alert(`Сообщение успешно запланировано на ${new Date(result.scheduledTime).toLocaleString()}`);
             
             // Очищаем форму
@@ -354,9 +415,11 @@
             // Обновляем список запланированных сообщений
             updateScheduledMessages();
           } else {
+            console.error('Ошибка при планировании сообщения:', result.error);
             alert('Ошибка при планировании сообщения: ' + result.error);
           }
         } catch (error) {
+          console.error('Произошла ошибка при планировании:', error);
           alert('Произошла ошибка: ' + error.message);
         }
       });
@@ -382,16 +445,21 @@
       
       // Обработчики событий от WhatsApp
       window.whatsappAPI.onQrCode((qrCodeUrl) => {
+        console.log('Получен QR-код от WhatsApp');
+        qrReceived = true;
         qrCodeImg.src = qrCodeUrl;
+        qrCodeImg.style.display = 'block';
         qrContainer.classList.remove('hidden');
         messageForm.classList.add('hidden');
         
         // Обновляем статус
+        qrStatus.textContent = 'QR-код получен, ожидание сканирования...';
         connectionStatus.className = 'connection-status connecting';
         statusText.textContent = 'Ожидание сканирования QR-кода...';
       });
       
       window.whatsappAPI.onWhatsAppReady(() => {
+        console.log('WhatsApp готов к использованию');
         qrContainer.classList.add('hidden');
         messageForm.classList.remove('hidden');
         
@@ -405,6 +473,7 @@
       });
       
       window.whatsappAPI.onWhatsAppDisconnected((reason) => {
+        console.log('WhatsApp отключен:', reason);
         // Обновляем статус
         isConnected = false;
         connectionStatus.className = 'connection-status disconnected';
@@ -415,19 +484,23 @@
       });
       
       window.whatsappAPI.onAuthFailure((message) => {
+        console.error('Ошибка авторизации WhatsApp:', message);
         alert('Ошибка авторизации: ' + message);
         
         // Обновляем статус
         connectionStatus.className = 'connection-status disconnected';
         statusText.textContent = 'Ошибка авторизации';
+        qrStatus.textContent = 'Ошибка авторизации: ' + message;
       });
       
       window.whatsappAPI.onMessageSent((messageId) => {
+        console.log('Сообщение отправлено, ID:', messageId);
         // Обновляем список запланированных сообщений
         updateScheduledMessages();
       });
       
       window.whatsappAPI.onSendError((error) => {
+        console.error('Ошибка отправки сообщения:', error);
         alert('Ошибка при отправке сообщения: ' + error);
       });
       
@@ -437,12 +510,24 @@
       
       // Показываем форму или QR-код в зависимости от статуса подключения
       if (isConnected) {
+        console.log('Статус: подключено, показываем форму сообщений');
         qrContainer.classList.add('hidden');
         messageForm.classList.remove('hidden');
       } else {
+        console.log('Статус: не подключено, показываем QR-код');
         qrContainer.classList.remove('hidden');
         messageForm.classList.add('hidden');
+        
+        // Проверяем наличие QR-кода после небольшой задержки
+        setTimeout(() => {
+          if (!qrReceived) {
+            console.log('QR-код не получен после задержки, обновляем статус');
+            qrStatus.textContent = 'QR-код не получен. Нажмите "Перезагрузить QR-код"';
+          }
+        }, 10000);
       }
+      
+      console.log('Инициализация интерфейса завершена');
     });
   </script>
 </body>
