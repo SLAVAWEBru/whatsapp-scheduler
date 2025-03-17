@@ -1,9 +1,22 @@
 const { contextBridge, ipcRenderer } = require('electron');
 const moment = require('moment-timezone');
 
-// Экспортируем API для использования в рендерере
+// Экспортируем API для использования в рендерере с улучшенной обработкой событий
 contextBridge.exposeInMainWorld('whatsappAPI', {
   scheduleMessage: (phone, message, sendTime, timezone) => {
+    // Валидация входных данных перед отправкой в основной процесс
+    if (!phone || typeof phone !== 'string') {
+      return Promise.reject(new Error('Неверный формат номера телефона'));
+    }
+    
+    if (!message || typeof message !== 'string') {
+      return Promise.reject(new Error('Сообщение не может быть пустым'));
+    }
+    
+    if (!sendTime || !timezone) {
+      return Promise.reject(new Error('Необходимо указать время и часовой пояс'));
+    }
+    
     const messageId = Date.now().toString();
     return ipcRenderer.invoke('schedule-message', { 
       phone, 
@@ -19,6 +32,9 @@ contextBridge.exposeInMainWorld('whatsappAPI', {
   },
   
   cancelMessage: (messageId) => {
+    if (!messageId) {
+      return Promise.reject(new Error('Не указан ID сообщения'));
+    }
     return ipcRenderer.invoke('cancel-message', messageId);
   },
   
@@ -34,27 +50,46 @@ contextBridge.exposeInMainWorld('whatsappAPI', {
     return moment.tz.guess();
   },
   
+  // Улучшенные обработчики событий с однократным подключением и удалением
   onQrCode: (callback) => {
-    ipcRenderer.on('qr-code', (event, qrCode) => callback(qrCode));
+    const newCallback = (_, qrCode) => callback(qrCode);
+    ipcRenderer.on('qr-code', newCallback);
+    return () => ipcRenderer.removeListener('qr-code', newCallback);
+  },
+  
+  onQrRegenerateNeeded: (callback) => {
+    const newCallback = () => callback();
+    ipcRenderer.on('qr-regenerate-needed', newCallback);
+    return () => ipcRenderer.removeListener('qr-regenerate-needed', newCallback);
   },
   
   onWhatsAppReady: (callback) => {
-    ipcRenderer.on('whatsapp-ready', () => callback());
+    const newCallback = () => callback();
+    ipcRenderer.on('whatsapp-ready', newCallback);
+    return () => ipcRenderer.removeListener('whatsapp-ready', newCallback);
   },
   
   onWhatsAppDisconnected: (callback) => {
-    ipcRenderer.on('whatsapp-disconnected', (event, reason) => callback(reason));
+    const newCallback = (_, reason) => callback(reason);
+    ipcRenderer.on('whatsapp-disconnected', newCallback);
+    return () => ipcRenderer.removeListener('whatsapp-disconnected', newCallback);
   },
   
   onAuthFailure: (callback) => {
-    ipcRenderer.on('auth-failure', (event, message) => callback(message));
+    const newCallback = (_, message) => callback(message);
+    ipcRenderer.on('auth-failure', newCallback);
+    return () => ipcRenderer.removeListener('auth-failure', newCallback);
   },
   
   onMessageSent: (callback) => {
-    ipcRenderer.on('message-sent', (event, messageId) => callback(messageId));
+    const newCallback = (_, messageId) => callback(messageId);
+    ipcRenderer.on('message-sent', newCallback);
+    return () => ipcRenderer.removeListener('message-sent', newCallback);
   },
   
   onSendError: (callback) => {
-    ipcRenderer.on('send-error', (event, error) => callback(error));
+    const newCallback = (_, error) => callback(error);
+    ipcRenderer.on('send-error', newCallback);
+    return () => ipcRenderer.removeListener('send-error', newCallback);
   }
 });
