@@ -21,7 +21,7 @@
   "dependencies": {
     "electron-store": "^8.1.0",
     "moment": "^2.29.4",
-    "moment-timezone": "^0.5.43",
+    "moment-timezone": "^0.5.47",
     "node-schedule": "^2.1.1",
     "puppeteer": "^22.0.0",
     "qrcode": "^1.5.3",
