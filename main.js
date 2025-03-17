@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
+const qrcode_terminal = require('qrcode-terminal'); // Добавлен терминальный QR-код
 const schedule = require('node-schedule');
 const Store = require('electron-store');
 const moment = require('moment-timezone');
@@ -33,26 +34,45 @@ function createWindow() {
 
   mainWindow.loadFile('index.html');
   
-  // Открываем DevTools только в режиме разработки
-  // mainWindow.webContents.openDevTools();
+  // Открываем DevTools в режиме разработки
+  mainWindow.webContents.openDevTools();
 }
 
 // Инициализация клиента WhatsApp
 function initWhatsAppClient() {
+  console.log('Инициализация WhatsApp клиента...');
+  
   whatsappClient = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      args: [
+        '--no-sandbox', 
+        '--disable-setuid-sandbox',
+        '--disable-gpu',
+        '--disable-dev-shm-usage'
+      ]
     }
   });
 
   whatsappClient.on('qr', async (qr) => {
+    console.log('QR-код получен от WhatsApp Web');
+    
+    // Отображаем QR-код в терминале для отладки
+    qrcode_terminal.generate(qr, {small: true});
+    console.log('QR-код отображен в терминале - можно сканировать отсюда');
+    
     try {
       // Генерация QR-кода как изображения Data URL
+      console.log('Генерация графического QR-кода...');
       const qrDataUrl = await qrcode.toDataURL(qr);
+      console.log('QR-код сгенерирован, отправка в UI...');
+      
       if (mainWindow) {
         mainWindow.webContents.send('qr-code', qrDataUrl);
+        console.log('QR-код отправлен в интерфейс');
+      } else {
+        console.error('Главное окно не определено!');
       }
     } catch (err) {
       console.error('Ошибка при генерации QR-кода:', err);
@@ -89,9 +109,14 @@ function initWhatsAppClient() {
     whatsappClient.initialize();
   });
 
-  whatsappClient.initialize().catch(err => {
-    console.error('Ошибка при инициализации WhatsApp клиента:', err);
-  });
+  console.log('Запуск инициализации клиента WhatsApp...');
+  whatsappClient.initialize()
+    .then(() => {
+      console.log('WhatsApp клиент успешно инициализирован');
+    })
+    .catch(err => {
+      console.error('Ошибка при инициализации WhatsApp клиента:', err);
+    });
 }
 
 // Функция для восстановления запланированных сообщений после перезапуска
@@ -225,8 +250,14 @@ ipcMain.handle('cancel-message', (event, messageId) => {
 
 ipcMain.handle('restart-whatsapp', () => {
   try {
+    console.log('Перезапуск WhatsApp клиента...');
     if (whatsappClient) {
-      whatsappClient.initialize();
+      whatsappClient.destroy().then(() => {
+        console.log('Клиент уничтожен, создаем новый...');
+        initWhatsAppClient();
+      });
+    } else {
+      initWhatsAppClient();
     }
     return { success: true };
   } catch (error) {
@@ -237,7 +268,9 @@ ipcMain.handle('restart-whatsapp', () => {
 
 // Запуск приложения
 app.whenReady().then(() => {
+  console.log('Приложение готово к запуску');
   createWindow();
+  console.log('Главное окно создано');
   initWhatsAppClient();
   
   app.on('activate', function () {
@@ -253,4 +286,11 @@ app.on('window-all-closed', function () {
 // Обработка закрытия приложения для сохранения данных
 app.on('before-quit', () => {
   // Дополнительная логика перед выходом (если нужна)
+  if (whatsappClient) {
+    try {
+      whatsappClient.destroy();
+    } catch (error) {
+      console.error('Ошибка при уничтожении клиента:', error);
+    }
+  }
 });
