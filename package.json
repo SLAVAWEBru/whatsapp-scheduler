@@ -7,7 +7,8 @@
     "start": "electron .",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "build": "electron-builder build --win"
+    "build": "electron-builder build --win",
+    "postinstall": "npx puppeteer browsers install chrome"
   },
   "keywords": [
     "whatsapp",
@@ -22,7 +23,7 @@
     "moment": "^2.29.4",
     "moment-timezone": "^0.5.43",
     "node-schedule": "^2.1.1",
-    "puppeteer": "^21.5.0",
+    "puppeteer": "^22.0.0",
     "qrcode": "^1.5.3",
     "qrcode-terminal": "^0.12.0",
     "whatsapp-web.js": "^1.22.1"
@@ -45,5 +46,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true
     }
+  },
+  "overrides": {
+    "ws": "^8.18.0"
   }
 }
