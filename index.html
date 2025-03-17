@@ -35,12 +35,63 @@
       background-color: white;
     }
     
-    #qrcode {
-      max-width: 300px;
+    .qr-wrapper {
+      position: relative;
       width: 250px;
       height: 250px;
       margin: 0 auto;
       border: 1px solid #ddd;
+      background-color: #fff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    #qrcode {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    
+    .qr-loading {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(255, 255, 255, 0.8);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    .qr-error {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(255, 220, 220, 0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #dc3545;
+    }
+    
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #128C7E;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin-bottom: 10px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
     }
     
     .status-container {
@@ -182,7 +233,16 @@
       <div class="qr-container" id="qr-container">
         <p>Пожалуйста, отсканируйте QR-код в приложении WhatsApp на вашем телефоне</p>
         <p><small>Откройте WhatsApp на телефоне > Нажмите на три точки > Выберите "Связанные устройства" > Нажмите "Привязать устройство"</small></p>
-        <img id="qrcode" src="" alt="QR-код для авторизации WhatsApp">
+        <div id="qr-wrapper" class="qr-wrapper">
+          <img id="qrcode" src="" alt="QR-код для авторизации WhatsApp">
+          <div id="qr-loading" class="qr-loading">
+            <div class="spinner"></div>
+            <p>Загрузка QR-кода...</p>
+          </div>
+          <div id="qr-error" class="qr-error hidden">
+            <p>Не удалось загрузить QR-код</p>
+          </div>
+        </div>
         <div id="qr-debug-info" class="debug-info">
           <p>Статус QR-кода: <span id="qr-status">Ожидание...</span></p>
           <button id="reload-qr-btn" class="btn btn-sm btn-warning reload-btn">Перезагрузить QR-код</button>
@@ -233,6 +293,9 @@
       const qrCodeImg = document.getElementById('qrcode');
       const qrStatus = document.getElementById('qr-status');
       const reloadQrBtn = document.getElementById('reload-qr-btn');
+      const qrWrapper = document.getElementById('qr-wrapper');
+      const qrLoading = document.getElementById('qr-loading');
+      const qrError = document.getElementById('qr-error');
       const messageForm = document.getElementById('message-form');
       const phoneInput = document.getElementById('phone');
       const messageInput = document.getElementById('message');
@@ -351,16 +414,24 @@
       reloadQrBtn.addEventListener('click', async () => {
         console.log('Нажата кнопка перезагрузки QR-кода');
         qrStatus.textContent = 'Перезагрузка QR-кода...';
+        qrLoading.classList.remove('hidden');
+        qrError.classList.add('hidden');
+        qrCodeImg.style.display = 'none';
+        
         try {
           const result = await window.whatsappAPI.restartWhatsApp();
           if (result.success) {
             qrStatus.textContent = 'QR-код запрошен, ожидание...';
           } else {
             qrStatus.textContent = 'Ошибка перезагрузки: ' + result.error;
+            qrLoading.classList.add('hidden');
+            qrError.classList.remove('hidden');
           }
         } catch (error) {
           console.error('Ошибка при перезагрузке WhatsApp:', error);
           qrStatus.textContent = 'Ошибка: ' + error.message;
+          qrLoading.classList.add('hidden');
+          qrError.classList.remove('hidden');
         }
       });
       
@@ -444,11 +515,25 @@
       });
       
       // Обработчики событий от WhatsApp
-      window.whatsappAPI.onQrCode((qrCodeUrl) => {
+      const cleanupQrCodeHandler = window.whatsappAPI.onQrCode((qrCodeUrl) => {
         console.log('Получен QR-код от WhatsApp');
         qrReceived = true;
+        
+        // Скрываем индикатор загрузки и сообщение об ошибке
+        qrLoading.classList.add('hidden');
+        qrError.classList.add('hidden');
+        
+        // Устанавливаем QR-код с обработкой событий загрузки
+        qrCodeImg.onload = function() {
+          qrCodeImg.style.display = 'block';
+        };
+        qrCodeImg.onerror = function() {
+          qrError.classList.remove('hidden');
+          qrStatus.textContent = 'Ошибка загрузки QR-кода. Попробуйте перезагрузить.';
+        };
         qrCodeImg.src = qrCodeUrl;
-        qrCodeImg.style.display = 'block';
+        
+        // Показываем контейнер QR-кода и скрываем форму
         qrContainer.classList.remove('hidden');
         messageForm.classList.add('hidden');
         
@@ -458,7 +543,24 @@
         statusText.textContent = 'Ожидание сканирования QR-кода...';
       });
       
-      window.whatsappAPI.onWhatsAppReady(() => {
+      // Новый обработчик для повторной генерации QR-кода
+      const cleanupQrRegenerateHandler = window.whatsappAPI.onQrRegenerateNeeded(() => {
+        console.log('Требуется повторная генерация QR-кода');
+        qrStatus.textContent = 'Требуется повторная генерация QR-кода...';
+        qrLoading.classList.remove('hidden');
+        qrError.classList.add('hidden');
+        qrCodeImg.style.display = 'none';
+        
+        // Запрашиваем новый QR-код
+        window.whatsappAPI.restartWhatsApp().catch(error => {
+          console.error('Ошибка при запросе нового QR-кода:', error);
+          qrStatus.textContent = 'Ошибка: ' + error.message;
+          qrLoading.classList.add('hidden');
+          qrError.classList.remove('hidden');
+        });
+      });
+      
+      const cleanupWhatsAppReadyHandler = window.whatsappAPI.onWhatsAppReady(() => {
         console.log('WhatsApp готов к использованию');
         qrContainer.classList.add('hidden');
         messageForm.classList.remove('hidden');
@@ -472,7 +574,7 @@
         updateScheduledMessages();
       });
       
-      window.whatsappAPI.onWhatsAppDisconnected((reason) => {
+      const cleanupDisconnectedHandler = window.whatsappAPI.onWhatsAppDisconnected((reason) => {
         console.log('WhatsApp отключен:', reason);
         // Обновляем статус
         isConnected = false;
@@ -483,7 +585,7 @@
         alert('Соединение с WhatsApp потеряно. Пожалуйста, перезапустите приложение или переподключитесь.');
       });
       
-      window.whatsappAPI.onAuthFailure((message) => {
+      const cleanupAuthFailureHandler = window.whatsappAPI.onAuthFailure((message) => {
         console.error('Ошибка авторизации WhatsApp:', message);
         alert('Ошибка авторизации: ' + message);
         
@@ -493,15 +595,26 @@
         qrStatus.textContent = 'Ошибка авторизации: ' + message;
       });
       
-      window.whatsappAPI.onMessageSent((messageId) => {
+      const cleanupMessageSentHandler = window.whatsappAPI.onMessageSent((messageId) => {
         console.log('Сообщение отправлено, ID:', messageId);
         // Обновляем список запланированных сообщений
         updateScheduledMessages();
       });
       
-      window.whatsappAPI.onSendError((error) => {
+      const cleanupSendErrorHandler = window.whatsappAPI.onSendError((error) => {
         console.error('Ошибка отправки сообщения:', error);
         alert('Ошибка при отправке сообщения: ' + error);
+      });
+      
+      // Очистка обработчиков при размонтировании компонента
+      window.addEventListener('beforeunload', () => {
+        cleanupQrCodeHandler && cleanupQrCodeHandler();
+        cleanupQrRegenerateHandler && cleanupQrRegenerateHandler();
+        cleanupWhatsAppReadyHandler && cleanupWhatsAppReadyHandler();
+        cleanupDisconnectedHandler && cleanupDisconnectedHandler();
+        cleanupAuthFailureHandler && cleanupAuthFailureHandler();
+        cleanupMessageSentHandler && cleanupMessageSentHandler();
+        cleanupSendErrorHandler && cleanupSendErrorHandler();
       });
       
       // Инициализация компонентов интерфейса
@@ -517,6 +630,10 @@
         console.log('Статус: не подключено, показываем QR-код');
         qrContainer.classList.remove('hidden');
         messageForm.classList.add('hidden');
+        
+        // Показываем индикатор загрузки QR-кода
+        qrLoading.classList.remove('hidden');
+        qrCodeImg.style.display = 'none';
         
         // Проверяем наличие QR-кода после небольшой задержки
         setTimeout(() => {
